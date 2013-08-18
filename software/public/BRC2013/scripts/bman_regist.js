@@ -56,6 +56,8 @@ function onRegister(msg)
     if (res) {
 	if (res.calls === null)
 	    res.calls = 0;
+	query = "UPDATE register SET location=" + loc + " WHERE imsi=" + imsisql;
+	sqlQuery(query);
     	Engine.debug(Engine.DebugInfo,"found imsi " + imsisql + " in location " + res.location);
     } 
     else {	
@@ -65,7 +67,6 @@ function onRegister(msg)
 	message("Welcome to Legba! Your on-playa phone number is " + num + ".", num);
 	Engine.debug(Engine.DebugInfo,query);
     }
-    Engine.debug(Engine.DebugInfo,"this is just a test " + imsi);
 
 }
 
