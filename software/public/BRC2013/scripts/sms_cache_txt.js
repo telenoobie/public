@@ -27,6 +27,7 @@ is_online = false;
 is_congested = true;
 max_queued = 30;
 sms_attempts = 10;
+retry_time = sqlStr("00:02:00");
 debug = false;
 
 #require "bman.js"
@@ -173,7 +174,7 @@ function localDelivery(id,location)
     var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE tries > 0 AND id=" + sqlNum(id));
     if (!res)
 	return null;
-    sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW(),'00:05:00') WHERE id=" + sqlNum(id));
+    sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
 
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
@@ -200,7 +201,7 @@ function smscDelivery(id)
     var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE tries > 0 AND id=" + sqlNum(id));
     if (!res)
 	return;
-    sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW(),'00:05:00') WHERE id=" + sqlNum(id));
+    sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
 
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
@@ -251,7 +252,7 @@ function moSipSms(msg,imsi)
     if (debug)
 	Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (+" + msisdn + ") -> '" + dest + "'");
     var isLocal = !!valQuery("SELECT COALESCE(location) AS location FROM register WHERE msisdn=" + sqlStr(dest));
-    var when = "ADDTIME(NOW(),'00:05:00')";
+    var when = "ADDTIME(NOW()," + retry_time + ")";
     if (isLocal)
 	when = "NOW()";
     var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
