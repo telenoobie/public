@@ -38,6 +38,8 @@ sms_attempts= 3;
  */
 function onRegister(msg)
 {
+	// TODO: This needs to be updated to deal with the wired phones.
+
     if (msg.number == "" || msg.data == "")
 	return false;
     if (msg.number !== undefined) {
