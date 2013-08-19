@@ -49,6 +49,9 @@ function onRegister(msg)
     Engine.debug(Engine.DebugInfo,"found imsi " + imsi + " from " + msg.number);
     if (imsi.match(/^310410/))
 	return false;
+    // HACK - For testing in SF, ignore non-test IMSIs.
+    //if (!imsi.match(/^001/))
+//	    return false;
     var loc = sqlStr(msg.data);
     var num = sqlStr(msg.number);
     var imsisql = sqlStr(imsi);
@@ -91,8 +94,7 @@ function randomint(modulus)
 
 function goodnumber()
 {
-   // var An = 2 + randomint(8);
-    var An = 2 + randomint(10);
+    var An = 2 + randomint(8);
     var A = An.toString();
     var Bn = randomint(10);
     var B = Bn.toString();
@@ -103,30 +105,38 @@ function goodnumber()
     var En = randomint(10);
     var E = En.toString();
 
-    switch (randomint(17)) {
+    switch (randomint(25)) {
 	// 4 digits in a row - There are 10,000 of each.
         case 0: return A+B+C+D+D+D+D;
         case 1: return A+B+C+C+C+C+D;
         case 2: return A+B+B+B+B+C+D;
         case 3: return A+A+A+A+B+C+D;
-        // ABCBA palidromes - There are about 100,000 of each.
-        case 4: return A+B+C+B+A+D+E;
-        case 5: return A+B+C+D+B+A+E;
-        case 6: return A+B+C+D+E+D+C;
         // ABCCBA palidromes - There are about 10,000 of each.
-        case 7: return A+B+C+C+B+A+D;
-        case 8: return A+B+C+D+D+C+B;
+        case 4: return A+B+C+C+B+A+D;
+        case 5: return A+B+C+D+D+C+B;
         // ABCABC repeats - There are about 10,000 of each.
-        case 9: return A+B+C+A+B+C+D;
-        case 10: return A+B+C+D+B+C+D;
+        case 6: return A+B+C+A+B+C+D;
+        case 7: return A+B+C+D+B+C+D;
+	case 8: return A+B+C+D+A+B+C;
         // AABBCC repeats - There are about 10,000 of each.
-        case 11: return A+A+B+B+C+C+D;
-        case 12: return A+B+B+C+C+D+D;
+        case 9: return A+A+B+B+C+C+D;
+        case 10: return A+B+B+C+C+D+D;
+	// AAABBB repeats - About 1,000 of each.
+	case 11: return A+A+A+B+B+B+C;
+	case 12: return A+A+A+B+C+C+C;
+	case 13: return A+B+B+B+C+C+C;
 	// 4-digit straights - There are about 1,000 of each.
-	case 13: return "2345"+B+C+D;
-	case 14: return A+"1234"+B+C;
-	case 15: return A+B+"1234"+C;
-	case 16: return A+B+C+"1234";
+	case 14: return "2345"+B+C+D;
+	case 15: return "3456"+B+C+D;
+	case 16: return "4567"+B+C+D;
+	case 17: return "5678"+B+C+D;
+	case 18: return "6789"+B+C+D;
+	case 19: return A+B+C+"1234";
+	case 20: return A+B+C+"2345";
+	case 21: return A+B+C+"3456";
+	case 22: return A+B+C+"4567";
+	case 23: return A+B+C+"5678";
+	case 24: return A+B+C+"6789";
     }
 }
 
