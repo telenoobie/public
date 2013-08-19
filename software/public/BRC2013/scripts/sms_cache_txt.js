@@ -23,8 +23,8 @@
  */
 
 // Defaults that can be overridden by config
-is_online = false;
-is_congested = true;
+is_online = true;
+is_congested = false;
 max_queued = 30;
 sms_attempts = 10;
 retry_time = sqlStr("00:02:00");
@@ -234,12 +234,16 @@ function smscDelivery(id)
 // MO SMS handling
 function moSipSms(msg,imsi)
 {
+    // IMSI here is the IMSi of the sender.
+
+    // Don't allow sending without a return path.
     var simsi = sqlStr(imsi);
     var msisdn = valQuery("SELECT msisdn FROM register WHERE imsi=" + simsi);
     if (msisdn == "") {
 	msg.retValue(403); // forbidden
 	return true;
     }
+    // Limit the number of messages queued for each user.
     if (max_queued) {
 	// Limit the number of messages waiting in MO queue
 	var cnt = valQuery("SELECT COUNT(*) FROM text_sms WHERE imsi=" + simsi);
