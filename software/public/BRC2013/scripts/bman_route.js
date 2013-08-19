@@ -33,8 +33,11 @@ function onRoute(msg)
 	var called = msg.called;
 	var caller = msg.caller;
 
-	// MSISDNs are fixed at 7 digits.
+	// This function routes calls to on-playa mobiles.
 	// Anything else falls through to regexroute.
+
+	// Target address is an MSISDN or an IMSI.
+	// MSISDNs are fixed at 7 digits.
 	if (called.length != 7 && !called.match(/IMSI/))
 		return false;
 
