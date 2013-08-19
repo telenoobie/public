@@ -34,6 +34,7 @@ function onRoute(msg)
 	var caller = msg.caller;
 
 	// MSISDNs are fixed at 7 digits.
+	// Anything else falls through to regexroute.
 	if (called.length != 7 && !called.match(/IMSI/))
 		return false;
 
@@ -56,6 +57,10 @@ function onRoute(msg)
 			msg.caller = "+" + res.msisdn;
 		}
 	}
+
+	// Set a time limit.
+	msg.timeout = 1000*60*call_timer;
+	// TODO: It would be nice to have a warning tone before the cutoff.
 
 	Engine.debug(Engine.DebugInfo,"call.route (after) called ----" + msg.called + "----");
 	Engine.debug(Engine.DebugInfo,"call.route c (after)aller ----" + msg.caller + "----");
