@@ -33,14 +33,49 @@ function onRoute(msg)
 	var called = msg.called;
 	var caller = msg.caller;
 
-	// This function routes calls to on-playa mobiles.
-	// Anything else falls through to regexroute.
+	// Set the caller ID
+	if (caller.match(/IMSI/)) {
+		query = "SELECT msisdn FROM register WHERE imsi=" + sqlStr(caller.substr(4));
+		res = rowQuery(query);
+		if (res) { 
+			msg.caller = "+" + res.msisdn;
+			msg.callername = "+" + res.msisdn;
+		}
+	}
+
+	// Set a time limit.
+	msg.timeout = 1000*60*call_timer;
+	// TODO: It would be nice to have a warning tone before the cutoff.
 
 	// Target address is an MSISDN or an IMSI.
 	// MSISDNs are fixed at 7 digits.
-	if (called.length != 7 && !called.match(/IMSI/))
-		return false;
+	if (called.length == 7 || called.match(/IMSI/))
+	{
+		routeIMSI(msg);
+		return true;
+	}
+	if (called.length == 4 || called.length >= 8 )
+	{
+		routeTropo(msg);
+		return true;
+	}
+	return false;
+}
 
+function routeTropo(msg)
+{
+	Engine.debug(Engine.DebugInfo,"route to tropo");
+	var retValue = "sip/sip:" + msg.called + "@173.255.118.53:6061" ;
+	Engine.debug(Engine.DebugInfo,"retValue" + retValue);
+	msg.retValue(retValue);
+	return true;
+}
+
+
+function routeIMSI(msg)
+{
+	var called = msg.called;
+	var caller = msg.caller;
 	// Get the IMSI and IP of the called phone.
 	var scalled = sqlStr(called);
 	var scalled4 = sqlStr(called.substr(4));
@@ -51,19 +86,6 @@ function onRoute(msg)
 		return false;
 	msg.uri = res.location.substr(4);
 	msg.retValue(res.location);
-
-	// Set the caller ID
-	if (caller.match(/IMSI/)) {
-		query = "SELECT msisdn FROM register WHERE imsi=" + sqlStr(caller.substr(4));
-		res = rowQuery(query);
-		if (res) { 
-			msg.caller = "+" + res.msisdn;
-		}
-	}
-
-	// Set a time limit.
-	msg.timeout = 1000*60*call_timer;
-	// TODO: It would be nice to have a warning tone before the cutoff.
 
 	Engine.debug(Engine.DebugInfo,"call.route (after) called ----" + msg.called + "----");
 	Engine.debug(Engine.DebugInfo,"call.route c (after)aller ----" + msg.caller + "----");

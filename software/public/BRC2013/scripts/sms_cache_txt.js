@@ -31,74 +31,8 @@ retry_time = sqlStr("00:02:00");
 debug = false;
 
 #require "bman.js"
+#require "libsql.js"
 
-// Make a SQL query, return the holding message or null if the query failed
-function sqlQuery(query,account)
-{
-    var m = new Message("database");
-    if (account === undefined)
-	account = dbacc;
-    m.account = account;
-    m.query = query;
-    if (m.dispatch(!!sqlQuery.async)) {
-	if (!m.error)
-	    return m;
-	Engine.debug(Engine.DebugWarn,"Query " + m.error + " on '" + account + "': " + query);
-    }
-    else
-	Engine.debug(Engine.DebugWarn,"Query not handled by '" + account + "': " + query);
-    return null;
-}
-
-// Make a SQL query, return 1st column in 1st row, null if query failed or returned no records
-function valQuery(query)
-{
-    var res = sqlQuery(query);
-    if (!res)
-	return null;
-    return res.getResult(0,0);
-}
-
-// Make a SQL query, return 1st row as Object, null if query failed or returned no records
-function rowQuery(query)
-{
-    var res = sqlQuery(query);
-    if (!res)
-	return null;
-    return res.getRow(0);
-}
-
-// Make a SQL query, return 1st column as Array, null if query failed or returned no records
-function colQuery(query)
-{
-    var res = sqlQuery(query);
-    if (!res)
-	return null;
-    return res.getColumn(0);
-}
-
-function sqlStr(str)
-{
-    if (str === null || str === undefined)
-	return "NULL";
-    return "'" + str + "'";
-}
-
-function sqlNum(num)
-{
-    if (num === null || num === undefined)
-	return "NULL";
-    return "" + num;
-}
-
-// Remove quotes around a string
-function cutQuotes(str) {
-    if (str === null || str === undefined)
-	return null;
-    if (str.charAt(0) == '"' && str.charAt(str.length - 1) == '"')
-	return str.substr(1,str.length - 2);
-    return str;
-}
 
 // Convert a number to MSISDN (international format)
 function toMSISDN(num,cc,ton)
@@ -132,29 +66,6 @@ function toMSISDN(num,cc,ton)
     return null;
 }
 
-// Helper that returns a left or right aligned fixed length string
-function strFix(str,len)
-{
-    if (str === null)
-	str = "";
-    if (len < 0) {
-	// right aligned
-	len = -len;
-	if (str.length >= len)
-	    return str.substr(str.length - len);
-	while (str.length < len)
-	    str = " " + str;
-    }
-    else {
-	// left aligned
-	if (str.length >= len)
-	    return str.substr(0,len);
-	while (str.length < len)
-	    str += " ";
-    }
-    return str;
-}
-
 // Perform one command line completion
 function oneCompletion(msg,str,part)
 {
@@ -179,7 +90,8 @@ function localDelivery(id,location)
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
     m.uri = location.substr(4);
-    m.user = "+" + res.msisdn;
+    m.user = res.msisdn;
+    //m.user = "+" + res.msisdn;
     if (my_sip)
 	m.domain = my_sip;
     m.xsip_type = "text/plain";
@@ -205,7 +117,8 @@ function smscDelivery(id)
 
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
-    m.uri = "sip:+" + res.dest + "@" + vlr_sip;
+    m.uri = "sip:" + res.dest + "@" + vlr_sip;
+    //m.uri = "sip:+" + res.dest + "@" + vlr_sip;
     m.user = "IMSI" + res.imsi;
     if (my_sip)
 	m.domain = my_sip;
@@ -234,6 +147,7 @@ function smscDelivery(id)
 // MO SMS handling
 function moSipSms(msg,imsi)
 {
+	Engine.debug(Engine.DebugAll,"imsi '" + imsi );
     // IMSI here is the IMSi of the sender.
 
     // Don't allow sending without a return path.
@@ -252,9 +166,11 @@ function moSipSms(msg,imsi)
 	    return true;
 	}
     }
-    var dest = toMSISDN(msg.called,my_cc);
+//    var dest = toMSISDN(msg.called,my_cc);
+    var dest = msg.called;
     if (debug)
-	Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (+" + msisdn + ") -> '" + dest + "'");
+	Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (" + msisdn + ") -> '" + dest + "'");
+	//Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (+" + msisdn + ") -> '" + dest + "'");
     var isLocal = !!valQuery("SELECT COALESCE(location) AS location FROM register WHERE msisdn=" + sqlStr(dest));
     var when = "ADDTIME(NOW()," + retry_time + ")";
     if (isLocal)
@@ -277,7 +193,8 @@ function moSipSms(msg,imsi)
     // if we're online and not congested attempt immediate submission
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
-    m.uri = "sip:+" + dest + "@" + vlr_sip;
+    m.uri = "sip:" + dest + "@" + vlr_sip;
+    //m.uri = "sip:+" + dest + "@" + vlr_sip;
     m.user = msg.caller;
     if (my_sip)
 	m.domain = my_sip;
@@ -321,7 +238,8 @@ function mtSipSms(msg,imsi)
     var res = rowQuery("SELECT COALESCE(location) AS location,msisdn FROM register WHERE imsi=" + sqlStr(imsi));
     if (res) {
 	if (debug)
-	    Engine.debug(Engine.DebugAll,"MT SMS '" + msg.caller + "' -> '" + imsi + "' (+" + res.msisdn + ")");
+	    Engine.debug(Engine.DebugAll,"MT SMS '" + msg.caller + "' -> '" + imsi + "' (" + res.msisdn + ")");
+	    //Engine.debug(Engine.DebugAll,"MT SMS '" + msg.caller + "' -> '" + imsi + "' (+" + res.msisdn + ")");
 	var m = new Message("xsip.generate");
 	m.method = "MESSAGE";
 	m.uri = res.location.substr(4);
@@ -355,12 +273,42 @@ function onSipMessage(msg)
 	msg.retValue(415); // unsupported media type
 	return true;
     }
-    if (msg.caller.substr(0,4) == "IMSI")
+
+    if (msg.called.length == 4 || msg.called.length >= 8) 
+	 	return  tropo(msg);
+    if (msg.called.length == 7 && msg.caller.substr(0,4) != "IMSI") 
+	    	return local(msg);
+    else if (msg.caller.substr(0,4) == "IMSI")
 	return moSipSms(msg,msg.caller.substr(4));
     else if (msg.called.substr(0,4) == "IMSI")
 	return mtSipSms(msg,msg.called.substr(4));
     msg.retValue(488); // not acceptable here
     return true;
+}
+
+function local (msg)
+{
+	query = "SELECT imsi FROM register WHERE msisdn=" + sqlStr(msg.called);
+	res = rowQuery(query);
+	mtSipSms(msg,res.imsi);
+
+}
+function tropo (msg)
+{
+	var tmp = msg.caller.substr(4);
+	// Set the caller ID
+	if (msg.caller.match(/IMSI/)) {
+		query = "SELECT msisdn FROM register WHERE imsi=" + sqlStr(msg.caller.substr(4));
+		res = rowQuery(query);
+		if (res) { 
+			msg.caller = res.msisdn;
+			msg.callername =  res.msisdn;
+			//msg.caller = "+" + res.msisdn;
+			//msg.callername = "+" + res.msisdn;
+		}
+	}
+	moSipSms(msg,tmp)
+
 }
 
 // Run expiration and retries
@@ -464,7 +412,7 @@ function onCommand(msg)
 		msg.retValue("Database error!\r\n");
 	    return true;
 	case /^smsc debug ./:
-	    switch (msg.line.substr(16)) {
+	    switch (msg.line.substr(11)) {
 		case "true":
 		case "yes":
 		case "on":
