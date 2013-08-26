@@ -23,7 +23,9 @@
  */
 
 // Defaults that can be overridden by config
-is_online = true;
+//HACK - fix this when Tropo is set up
+is_online =false;
+
 is_congested = false;
 max_queued = 30;
 sms_attempts = 10;
@@ -274,7 +276,10 @@ function onSipMessage(msg)
 	return true;
     }
 
-    if (msg.called.length == 4 || msg.called.length == 3 || msg.called.length >= 8) 
+    if (msg.called.length == 4 || msg.called.length == 3) 
+	 	return  tropo(msg);
+    // HACK -- reject off-playa messages until Tropo is routing.
+    if (msg.called.length >= 8) 
 	 	return  tropo(msg);
     if (msg.called.length == 7 && msg.caller.substr(0,4) != "IMSI") 
 	    	return local(msg);
@@ -327,19 +332,24 @@ function onInterval()
 // Execute idle loop actions
 function onIdleAction()
 {
-    // Perform local delivery if possible
-    var query = "SELECT id,COALESCE(location) AS location FROM register,text_sms WHERE register.msisdn=text_sms.dest"
-	+ " AND location IS NOT NULL AND tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
-	+ " ORDER BY next_try,id LIMIT 1";
-    var res = rowQuery(query);
-    if (res)
-	localDelivery(res.id,res.location);
-    else if (is_online) {
-	query = "SELECT id FROM text_sms WHERE tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
+    while (true) {
+	// Perform local delivery if possible
+	var query = "SELECT id,COALESCE(location) AS location FROM register,text_sms WHERE register.msisdn=text_sms.dest"
+	    + " AND location IS NOT NULL AND tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
 	    + " ORDER BY next_try,id LIMIT 1";
-	res = valQuery(query);
-	if (res)
-	    smscDelivery(res);
+	var res = rowQuery(query);
+	if (res) {
+	    localDelivery(res.id,res.location);
+	}
+	else if (is_online) {
+	    query = "SELECT id FROM text_sms WHERE tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
+		+ " ORDER BY next_try,id LIMIT 1";
+	    res = valQuery(query);
+	    if (res)
+		smscDelivery(res);
+        }
+	if (!res)
+	    break;
     }
     // Reschedule after 5s
     onInterval.nextIdle = (Date.now() / 1000) + 5;
