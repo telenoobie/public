@@ -332,7 +332,6 @@ function onInterval()
 // Execute idle loop actions
 function onIdleAction()
 {
-    while (true) {
 	// Perform local delivery if possible
 	var query = "SELECT id,COALESCE(location) AS location FROM register,text_sms WHERE register.msisdn=text_sms.dest"
 	    + " AND location IS NOT NULL AND tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
@@ -348,11 +347,9 @@ function onIdleAction()
 	    if (res)
 		smscDelivery(res);
         }
-	if (!res)
-	    break;
-    }
-    // Reschedule after 5s
-    onInterval.nextIdle = (Date.now() / 1000) + 5;
+	//
+    // Reschedule after 1s
+    onInterval.nextIdle = (Date.now() / 1000) + 1;
 }
 
 // Handle cache state changes
