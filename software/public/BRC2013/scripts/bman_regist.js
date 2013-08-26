@@ -69,7 +69,7 @@ function onRegister(msg)
 	var num = newnumber();
 	query = "INSERT INTO register (imsi,msisdn,location) VALUES (" + imsisql + "," + sqlStr(num) +"," + loc + ")";
 	sqlQuery(query);
-	message("Welcome to Legba! Your on-playa phone number is " + num + ".", num);
+	message("Welcome to Legba! Your on-playa phone number is " + num + ". Tune GARS 95.1 for gate info. NO EMERGENCY CALLS!", num);
 	Engine.debug(Engine.DebugInfo,query);
     }
 

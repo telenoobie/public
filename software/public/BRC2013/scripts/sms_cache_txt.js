@@ -274,7 +274,7 @@ function onSipMessage(msg)
 	return true;
     }
 
-    if (msg.called.length == 4 || msg.called.length >= 8) 
+    if (msg.called.length == 4 || msg.called.length == 3 || msg.called.length >= 8) 
 	 	return  tropo(msg);
     if (msg.called.length == 7 && msg.caller.substr(0,4) != "IMSI") 
 	    	return local(msg);

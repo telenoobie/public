@@ -51,10 +51,11 @@ function onRoute(msg)
 	// MSISDNs are fixed at 7 digits.
 	if (called.length == 7 || called.match(/IMSI/))
 	{
-		routeIMSI(msg);
+		return routeIMSI(msg);
 		return true;
 	}
-	if (called.length == 4 || called.length >= 8 )
+	}
+	if (called.length == 4 || called.length == 3 || called.length >= 8 )
 	{
 		routeTropo(msg);
 		return true;
@@ -65,7 +66,7 @@ function onRoute(msg)
 function routeTropo(msg)
 {
 	Engine.debug(Engine.DebugInfo,"route to tropo");
-	var retValue = "sip/sip:" + msg.called + "@173.255.118.53:6061" ;
+	var retValue = "sip/sip:" + msg.called + "@" + reg_sip;
 	Engine.debug(Engine.DebugInfo,"retValue" + retValue);
 	msg.retValue(retValue);
 	return true;
