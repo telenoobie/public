@@ -29,10 +29,10 @@ is_online =true;
 is_congested = false;
 max_queued = 30;
 sms_attempts = 10;
-retry_time = sqlStr("00:01:00");
+retry_time = sqlStr("00:02:00");
 debug = false;
 delivery_count = 0;
-max_delivery_count = 10;
+max_delivery_count = 20;
 
 #require "bman.js"
 #require "libsql.js"
@@ -108,7 +108,10 @@ function localDelivery(id,location)
 	switch (m.code) {
 	    case 200:
 	    case 202:
+    		Engine.debug(Engine.DebugInfo,"Removing message delivered to " + location);
 		sqlQuery("UPDATE text_sms SET next_try=NOW(),tries=-1 WHERE id=" + id);
+	    default:
+    		Engine.debug(Engine.DebugInfo,"Delivery to " + location + " failed; will try again later.");
 		return;
 	}
     }
