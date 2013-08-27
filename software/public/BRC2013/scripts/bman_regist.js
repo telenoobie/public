@@ -39,40 +39,55 @@ sms_attempts= 3;
 function onRegister(msg)
 {
 	// TODO: This needs to be updated to deal with the wired phones.
+	// HACK: Give the phone an IMSI for a user name.
 
+    Engine.debug(Engine.DebugInfo,"registration from " + msg.number);
     if (msg.number == "" || msg.data == "")
 	return false;
     if (msg.number !== undefined) {
 	if (msg.number.substr(0,4) == "IMSI")
 	    imsi = msg.number.substr(4);
     }
-    Engine.debug(Engine.DebugInfo,"found imsi " + imsi + " from " + msg.number);
+    // Block AT&T
     if (imsi.match(/^310410/))
 	return false;
-    // HACK - For testing in SF, ignore non-test IMSIs.
-    //if (!imsi.match(/^001/))
-//	    return false;
-    var loc = sqlStr(msg.data);
     var num = sqlStr(msg.number);
+    var loc = sqlStr(msg.data);
     var imsisql = sqlStr(imsi);
-    query = "SELECT location FROM register where imsi=" + imsisql + "";
+    query = "SELECT location FROM register WHERE imsi=" + imsisql;
     Engine.debug(Engine.DebugInfo,query);
-    var res = rowQuery(query);
-    if (res) {
-	if (res.calls === null)
-	    res.calls = 0;
-	query = "UPDATE register SET location=" + loc + " WHERE imsi=" + imsisql;
-	sqlQuery(query);
-    	Engine.debug(Engine.DebugInfo,"found imsi " + imsisql + " in location " + res.location);
-    } 
-    else {	
+    var qres = sqlQuery(query);
+    // Failed database query. Phone will try again soon.
+    if (qres === null) {
+	    msg.retValue(503);
+	    return true;
+    }
+ 
+    // IMSI already in use?
+    var res = qres.getResult(0,0);
+    if (!res) {
+    	// We have a new customer!
 	var num = newnumber();
 	query = "INSERT INTO register (imsi,msisdn,location) VALUES (" + imsisql + "," + sqlStr(num) +"," + loc + ")";
-	sqlQuery(query);
-	message("Welcome to Legba! Your on-playa phone number is " + num + ". Tune GARS 95.1 for gate info. NO EMERGENCY CALLS!", num);
+    	Engine.debug(Engine.DebugInfo,query);
+	var worked = sqlQuery(query);
+	if (!worked) {
+	    msg.retValue(503);
+	    return true;
+	}
+	message("Welcome to Legba! Your number is " + num + "; use with friends it on the playa. Tune 95.1 for gate info. NO EMERGENCY CALLS!", imsi,num);
 	Engine.debug(Engine.DebugInfo,query);
+	msg.retValue(200);
+	return true;
     }
 
+    // Update location.
+    query = "UPDATE register SET location=" + loc + " WHERE imsi=" + imsisql;
+    Engine.debug(Engine.DebugInfo,query);
+    sqlQuery(query);
+    Engine.debug(Engine.DebugInfo,"found imsi " + imsisql + " in location " + res.location);
+    msg.retValue(200);
+    return true;
 }
 
 
@@ -83,7 +98,6 @@ function randomint(modulus)
 	
 	var d = new Date();
 	randomint.count = d.getSeconds()*1000 + d.getMilliseconds();
-	//randomint.count = Math.random();
     }
     randomint.count++;
     // Knuth's integer hash.
@@ -144,7 +158,11 @@ function numberavailable(val)
 {
 	var query = "SELECT msisdn FROM register WHERE msisdn=" + sqlStr(val);
 	var res = sqlQuery(query);
-	return res;
+	if (res === null)
+		return false;
+	if (res.getResult(0,0) === null)
+		return true;
+	return false;
 }
 
 function newnumber()
@@ -157,16 +175,15 @@ function newnumber()
     return val;
 }
 
-function message(text,dest)
+function message(text,imsi,dest)
 {
 	
-    var when = "ADDTIME(NOW(),'00:00:20')";
     var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
-    query += " VALUES('001170000000010','6611',"
-	+ sqlStr(dest) + "," + when + "," + sqlNum(sms_attempts) + ","
+    query += " VALUES(" + sqlStr(imsi) + ",'6611',"
+	+ sqlStr(dest) + ",NOW()," + sqlNum(sms_attempts) + ","
 	+ sqlStr(text) + ")";
     query += "; SELECT LAST_INSERT_ID()";
-	Engine.debug(Engine.DebugInfo,"this is the message " + query);
+    Engine.debug(Engine.DebugInfo,"this is the message " + query);
     var id = valQuery(query);
 
 }
