@@ -24,7 +24,7 @@
 
 // Defaults that can be overridden by config
 //HACK - fix this when Tropo is set up
-is_online =false;
+is_online =true;
 
 is_congested = false;
 max_queued = 30;
@@ -280,12 +280,13 @@ function onSipMessage(msg)
 	return true;
     }
 
+    is_mo_imsi = msg.caller.substr(0,4) == "IMSI";
     if (msg.called.length == 4 || msg.called.length == 3) 
 	 	return  tropo(msg);
     // HACK -- reject off-playa messages until Tropo is routing.
-    if (msg.called.length >= 8) 
+    if (msg.called.length >= 8 || is_mo_imsi) 
 	 	return  tropo(msg);
-    if (msg.called.length == 7 && msg.caller.substr(0,4) != "IMSI") 
+    if (msg.called.length == 7 && is_mo_imsi) 
 	    	return local(msg);
     else if (msg.caller.substr(0,4) == "IMSI")
 	return moSipSms(msg,msg.caller.substr(4));
@@ -297,6 +298,7 @@ function onSipMessage(msg)
 
 function local (msg)
 {
+	Engine.debug(Engine.DebugInfo,"Sending to local from IMSI " + msg.caller + " to " + sqlStr(msg.called));
 	query = "SELECT imsi FROM register WHERE msisdn=" + sqlStr(msg.called);
 	res = rowQuery(query);
 	mtSipSms(msg,res.imsi);
@@ -304,6 +306,7 @@ function local (msg)
 }
 function tropo (msg)
 {
+	Engine.debug(Engine.DebugInfo,"Sending to tropo from IMSI " + msg.caller);
 	var tmp = msg.caller.substr(4);
 	// Set the caller ID
 	if (msg.caller.match(/IMSI/)) {
@@ -354,6 +357,7 @@ function onIdleAction()
 	    localDelivery(res.id,res.location);
 	}
 	else if (is_online) {
+	    Engine.debug(Engine.DebugInfo,"Checking for Tropo deliverable message.");
 	    query = "SELECT id FROM text_sms WHERE tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
 		+ " ORDER BY next_try,id LIMIT 1";
 	    res = valQuery(query);
