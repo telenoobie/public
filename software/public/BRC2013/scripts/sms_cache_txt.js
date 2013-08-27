@@ -328,15 +328,9 @@ function onInterval()
 {
     if (delivery_count > 5)
 	    return;
-//    var when = Date.now() / 1000;
-//    if (onInterval.nextIdle >= 0 && when >= onInterval.nextIdle) {
-//	onInterval.nextIdle = -1;
 	var m = new Message("idle.execute");
 	m.module = "sms_cache";
 	m.enqueue();
-//	if (!m.enqueue())
-//	    onInterval.nextIdle = when + 5;
- //   }
 }
 
 // Execute idle loop actions
@@ -346,18 +340,25 @@ function onIdleAction()
 	delivery_count++;
 	Engine.debug(Engine.DebugInfo,"SMS delivery loop, delivery_count=" + delivery_count);
 	// Perform local delivery if possible
-	var query = "SELECT id,COALESCE(location) AS location FROM register,text_sms WHERE register.msisdn=text_sms.dest"
-	    + " AND location IS NOT NULL AND tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
-	    + " ORDER BY next_try,id LIMIT 1";
-	var res = rowQuery(query);
-    	if (!res) {
-	    Engine.debug(Engine.DebugInfo,"No SMS ready for delviery.");
+	// Get a deliverable message id.
+	var query_dest = "SELECT dest,id FROM text_sms WHERE"
+	    + " tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
+	    + " ORDER BY next_try LIMIT 1";
+	var res_dest = rowQuery(query_dest);
+    	if (!res_dest) {
+	    Engine.debug(Engine.DebugInfo,"No SMS ready for delivery.");
 	}
-	if (res) {
-	    localDelivery(res.id,res.location);
+        sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
+	Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_dest.dest);
+	// Get the desination IP.
+	var query_loc = "SELECT location FROM register WHERE msisdn = " + sqlStr(res_dest.dest) + " LIMIT 1";
+	var res_loc = rowQuery(query_loc);
+	if (res_loc) {
+	    Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_loc.location);
+	    localDelivery(res_dest.id,res_loc.location);
 	}
 	else if (is_online) {
-	    Engine.debug(Engine.DebugInfo,"Checking for Tropo deliverable message.");
+	    Engine.debug(Engine.DebugInfo,"Delivering to Tropo");
 	    query = "SELECT id FROM text_sms WHERE tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
 		+ " ORDER BY next_try,id LIMIT 1";
 	    res = valQuery(query);
@@ -365,10 +366,12 @@ function onIdleAction()
 		smscDelivery(res);
         }
 	delivery_count--;
+	Engine.debug(Engine.DebugInfo,"SMS delivery loop exit, delivery_count=" + delivery_count);
 	//
     // Reschedule after 1s
     //onInterval.nextIdle = (Date.now() / 1000) + 1;
 }
+
 
 // Handle cache state changes
 function onCacheState(msg)
