@@ -177,14 +177,11 @@ function moSipSms(msg,imsi)
     var dest = msg.called;
     if (debug)
 	Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (" + msisdn + ") -> '" + dest + "'");
-	//Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (+" + msisdn + ") -> '" + dest + "'");
-    var isLocal = !!valQuery("SELECT COALESCE(location) AS location FROM register WHERE msisdn=" + sqlStr(dest));
-    var when = "ADDTIME(NOW()," + retry_time + ")";
-    if (isLocal)
-	when = "NOW()";
+    //var isLocal = !!valQuery("SELECT COALESCE(location) AS location FROM register WHERE msisdn=" + sqlStr(dest));
+    // Put the SMS into the delivery database.
     var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
     query += " VALUES(" + simsi + "," + sqlStr(msisdn) + ","
-	+ sqlStr(dest) + "," + when + "," + sqlNum(sms_attempts) + ","
+	+ sqlStr(dest) + ",NOW()," + sqlNum(sms_attempts) + ","
 	+ sqlStr(msg.xsip_body) + ")";
     query += "; SELECT LAST_INSERT_ID()";
     var id = valQuery(query);
@@ -194,8 +191,10 @@ function moSipSms(msg,imsi)
     }
 
     msg.retValue(202); // accepted
-    if (isLocal || is_congested || !is_online)
+    //if (isLocal || is_congested || !is_online)
 	return true;
+
+	/*
 
     // if we're online and not congested attempt immediate submission
     var m = new Message("xsip.generate");
@@ -237,6 +236,7 @@ function moSipSms(msg,imsi)
 	}
     }
     return true;
+    */
 }
 
 // MT SMS are forwarded directly to OpenBTS
@@ -281,13 +281,15 @@ function onSipMessage(msg)
 	return true;
     }
 
-    is_mo_imsi = msg.caller.substr(0,4) == "IMSI";
     if (msg.called.length == 4 || msg.called.length == 3) 
 	 	return  tropo(msg);
-    // HACK -- reject off-playa messages until Tropo is routing.
-    if (msg.called.length >= 8 || is_mo_imsi) 
-	 	return  tropo(msg);
-    if (msg.called.length == 7 && is_mo_imsi) 
+    if (msg.called.length >= 8 || msg.caller.substr(0,4) != "IMSI") {
+	    // For now, reject these until Tropo is connected.
+//	 	return  tropo(msg);
+    		msg.retValue(488); // not acceptable here
+		return true;
+    }
+    if (msg.called.length == 7) 
 	    	return local(msg);
     else if (msg.caller.substr(0,4) == "IMSI")
 	return moSipSms(msg,msg.caller.substr(4));
@@ -327,6 +329,18 @@ function tropo (msg)
 // Run expiration and retries
 function onInterval()
 {
+	var m = new Message("engine.status");
+	m.wait = true;
+	m.name="engine";
+	if (m.dispatch(true)) {
+		// then what?
+		Engine.debug(Engine.DebugWarn,"We have " + m.workers + " worker threads");
+		if (m.workers>10) {
+			Engine.debug(Engine.DebugWarn,"Too many worker threads");
+			return false;
+		}
+	}
+
     if (delivery_count > max_delivery_count)
 	    return false;
 	var m = new Message("idle.execute");

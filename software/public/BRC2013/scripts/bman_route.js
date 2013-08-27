@@ -65,7 +65,7 @@ function onRoute(msg)
 
 function routeTropo(msg)
 {
-	Engine.debug(Engine.DebugInfo,"route to tropo");
+	Engine.debug(Engine.DebugInfo,"route to tropo" + msg.called + "/" + msg.caller);
 	var retValue = "sip/sip:" + msg.called + "@" + reg_sip;
 	Engine.debug(Engine.DebugInfo,"retValue" + retValue);
 	msg.retValue(retValue);
