@@ -155,6 +155,8 @@ function smscDelivery(id)
 }
 
 // MO SMS handling
+// Inserts an MO SMS into the database
+// IMSI is the IMSI of the sender.
 function moSipSms(msg,imsi)
 {
 	Engine.debug(Engine.DebugAll,"imsi '" + imsi );
@@ -164,29 +166,19 @@ function moSipSms(msg,imsi)
     var simsi = sqlStr(imsi);
     var msisdn = valQuery("SELECT msisdn FROM register WHERE imsi=" + simsi);
     if (msisdn == "") {
+	Engine.debug(Engine.DebugAll,"Message from " + imsi + " with no return address");
 	msg.retValue(403); // forbidden
 	return true;
     }
-    // Limit the number of messages queued for each user.
-    if (max_queued) {
-	// Limit the number of messages waiting in MO queue
-	var cnt = valQuery("SELECT COUNT(*) FROM text_sms WHERE imsi=" + simsi);
-	if (cnt >= max_queued) {
-	    msg.retValue(480); // temporarily unavailable
-	    return true;
-	}
-    }
-//    var dest = toMSISDN(msg.called,my_cc);
     var dest = msg.called;
-    if (debug)
-	Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (" + msisdn + ") -> '" + dest + "'");
-    //var isLocal = !!valQuery("SELECT COALESCE(location) AS location FROM register WHERE msisdn=" + sqlStr(dest));
+    Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (" + msisdn + ") -> '" + dest + "'");
     // Put the SMS into the delivery database.
     var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
     query += " VALUES(" + simsi + "," + sqlStr(msisdn) + ","
 	+ sqlStr(dest) + ",NOW()," + sqlNum(sms_attempts) + ","
 	+ sqlStr(msg.xsip_body) + ")";
     query += "; SELECT LAST_INSERT_ID()";
+    Engine.debug(Engine.DebugInfo,query);
     var id = valQuery(query);
     if (!id) {
 	msg.retValue(500); // internal server error
@@ -194,53 +186,10 @@ function moSipSms(msg,imsi)
     }
 
     msg.retValue(202); // accepted
-    //if (isLocal || is_congested || !is_online)
 	return true;
-
-	/*
-
-    // if we're online and not congested attempt immediate submission
-    var m = new Message("xsip.generate");
-    m.method = "MESSAGE";
-    m.uri = "sip:" + dest + "@" + vlr_sip;
-    //m.uri = "sip:+" + dest + "@" + vlr_sip;
-    m.user = msg.caller;
-    if (my_sip)
-	m.domain = my_sip;
-    m["sip_P-PHY-Info"] = msg["sip_p-phy-info"];
-    m["sip_P-Access-Network-Info"] = msg["sip_p-access-network-info"];
-    m.xsip_type = msg.xsip_type;
-    m.xsip_body = msg.xsip_body;
-    m.wait = true;
-    if (m.dispatch(true)) {
-	switch (m.code) {
-	    case undefined:
-	    case null:
-	    case "":
-	    case 0:
-	    case 408:
-	    case 504:
-		// Timeout or some other local failure
-		return true;
-	    case 200:
-	    case 202:
-		// Success
-		sqlQuery("UPDATE text_sms SET next_try=NOW(),tries=-1 WHERE id=" + id);
-		// Intentionally fall through
-	    default:
-		if (m.code > 299)
-		    sqlQuery("UPDATE text_sms SET next_try=NOW(),tries=-3 WHERE id=" + id);
-		msg.retValue(m.code);
-		if (m.xsip_body) {
-		    msg.xsip_type = m.xsip_type;
-		    msg.xsip_body = m.xsip_body;
-		}
-	    return true;
-	}
-    }
-    return true;
-    */
 }
+
+
 
 // MT SMS are forwarded directly to OpenBTS
 function mtSipSms(msg,imsi)
@@ -284,35 +233,65 @@ function onSipMessage(msg)
 	return true;
     }
 
-    if (msg.called.length == 4 || msg.called.length == 3) 
-	 	return  tropo(msg);
-    if (msg.called.length >= 8 || msg.caller.substr(0,4) != "IMSI") {
 	    // For now, reject these until Tropo is connected.
-//	 	return  tropo(msg);
+    if (msg.called.length >= 8) {
     		msg.retValue(488); // not acceptable here
 		return true;
     }
-    if (msg.called.length == 7) 
-	    	return local(msg);
-    else if (msg.caller.substr(0,4) == "IMSI")
+
+    if (msg.called.length != 7)
+	    return tropo(msg);
+
+    // Emqueue the message.
+    if (msg.caller.substr(0,4) == "IMSI")
+	    // MO
 	return moSipSms(msg,msg.caller.substr(4));
     else if (msg.called.substr(0,4) == "IMSI")
+	    // MT
 	return mtSipSms(msg,msg.called.substr(4));
+    else
+	    // locally destined message from something other than a handset
+	return local(msg);
+
     msg.retValue(488); // not acceptable here
     return true;
 }
 
+// Enqueue a message for local delivery.
 function local (msg)
 {
 	Engine.debug(Engine.DebugInfo,"Sending to local from IMSI " + msg.caller + " to " + sqlStr(msg.called));
 	query = "SELECT imsi FROM register WHERE msisdn=" + sqlStr(msg.called);
-	res = rowQuery(query);
-	mtSipSms(msg,res.imsi);
+	imsi = valQuery(query);
+	if (!imsi) {
+		msg.retValue(404);
+		return true;
+	}
+	//
+	//
+    // Put the SMS into the delivery database.
+	simsi = sqlStr(imsi);
+    var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
+    query += " VALUES(" + sqlStr(imsi) + "," + sqlStr(msg.caller) + ","
+	+ sqlStr(msg.called) + ",NOW()," + sqlNum(sms_attempts) + ","
+	+ sqlStr(msg.xsip_body) + ")";
+    query += "; SELECT LAST_INSERT_ID()";
+    var id = valQuery(query);
+    if (!id) {
+	msg.retValue(500); // internal server error
+	return true;
+    }
+
+    msg.retValue(202); // accepted
+	return true;
 
 }
+
+
+
 function tropo (msg)
 {
-	Engine.debug(Engine.DebugInfo,"Sending to tropo from IMSI " + msg.caller);
+	Engine.debug(Engine.DebugInfo,"Enqueing for tropo from IMSI " + msg.caller);
 	var tmp = msg.caller.substr(4);
 	// Set the caller ID
 	if (msg.caller.match(/IMSI/)) {
@@ -321,13 +300,11 @@ function tropo (msg)
 		if (res) { 
 			msg.caller = res.msisdn;
 			msg.callername =  res.msisdn;
-			//msg.caller = "+" + res.msisdn;
-			//msg.callername = "+" + res.msisdn;
 		}
 	}
-	moSipSms(msg,tmp)
-
+	return moSipSms(msg,tmp);
 }
+
 
 // Run expiration and retries
 function onInterval()
@@ -353,11 +330,13 @@ function onInterval()
 }
 
 // Execute idle loop actions
+// This function delivers pending messages.
 function onIdleAction()
 {
 	// count in-progress attempts
     if (delivery_count > max_delivery_count)
 	    return false;
+
 	delivery_count++;
 	Engine.debug(Engine.DebugInfo,"SMS delivery loop, delivery_count=" + delivery_count);
 	// Perform local delivery if possible
@@ -368,16 +347,21 @@ function onIdleAction()
 	var res_dest = rowQuery(query_dest);
     	if (!res_dest) {
 	    Engine.debug(Engine.DebugInfo,"No SMS ready for delivery.");
+	    return true;
 	}
         sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
 	Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_dest.dest);
-	// Get the desination IP.
-	var query_loc = "SELECT location FROM register WHERE msisdn = " + sqlStr(res_dest.dest) + " LIMIT 1";
-	var res_loc = rowQuery(query_loc);
-	if (res_loc) {
-	    Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_loc.location);
-	    localDelivery(res_dest.id,res_loc.location);
+	// 7-digit numbers are local
+	if (res_dest.dest.length == 7) {
+		// Get the desination IP.
+		var query_loc = "SELECT location FROM register WHERE msisdn = " + sqlStr(res_dest.dest) + " LIMIT 1";
+		var res_loc = rowQuery(query_loc);
+		if (res_loc) {
+	   		Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_loc.location);
+	   		localDelivery(res_dest.id,res_loc.location);
+		}
 	}
+	// Everything else goes to Tropo
 	else if (is_online) {
 	    Engine.debug(Engine.DebugInfo,"Delivering to Tropo");
 	    smscDelivery(res_dest.id);
@@ -385,9 +369,6 @@ function onIdleAction()
 	delivery_count--;
 	Engine.debug(Engine.DebugInfo,"SMS delivery loop exit, delivery_count=" + delivery_count);
 	return true;
-	//
-    // Reschedule after 1s
-    //onInterval.nextIdle = (Date.now() / 1000) + 1;
 }
 
 
