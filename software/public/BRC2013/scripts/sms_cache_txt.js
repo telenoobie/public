@@ -29,8 +29,9 @@ is_online =false;
 is_congested = false;
 max_queued = 30;
 sms_attempts = 10;
-retry_time = sqlStr("00:02:00");
+retry_time = sqlStr("00:01:00");
 debug = false;
+delivery_count = 0;
 
 #require "bman.js"
 #require "libsql.js"
@@ -84,10 +85,13 @@ function oneCompletion(msg,str,part)
 // Deliver SMS to registered MS
 function localDelivery(id,location)
 {
+    Engine.debug(Engine.DebugInfo,"Attempting delivery to " + location);
     var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE tries > 0 AND id=" + sqlNum(id));
     if (!res)
 	return null;
-    sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
+    //sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
+    // inifinite retry
+    sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
 
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
@@ -319,24 +323,33 @@ function tropo (msg)
 // Run expiration and retries
 function onInterval()
 {
-    var when = Date.now() / 1000;
-    if (onInterval.nextIdle >= 0 && when >= onInterval.nextIdle) {
-	onInterval.nextIdle = -1;
+    if (delivery_count > 10)
+	    return;
+//    var when = Date.now() / 1000;
+//    if (onInterval.nextIdle >= 0 && when >= onInterval.nextIdle) {
+//	onInterval.nextIdle = -1;
 	var m = new Message("idle.execute");
 	m.module = "sms_cache";
-	if (!m.enqueue())
-	    onInterval.nextIdle = when + 5;
-    }
+	m.enqueue();
+//	if (!m.enqueue())
+//	    onInterval.nextIdle = when + 5;
+ //   }
 }
 
 // Execute idle loop actions
 function onIdleAction()
 {
+	// count in-progress attempts
+	delivery_count++;
+	Engine.debug(Engine.DebugInfo,"SMS delivery loop, delivery_count=" + delivery_count);
 	// Perform local delivery if possible
 	var query = "SELECT id,COALESCE(location) AS location FROM register,text_sms WHERE register.msisdn=text_sms.dest"
 	    + " AND location IS NOT NULL AND tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
 	    + " ORDER BY next_try,id LIMIT 1";
 	var res = rowQuery(query);
+    	if (!res) {
+	    Engine.debug(Engine.DebugInfo,"No SMS ready for delviery.");
+	}
 	if (res) {
 	    localDelivery(res.id,res.location);
 	}
@@ -347,9 +360,10 @@ function onIdleAction()
 	    if (res)
 		smscDelivery(res);
         }
+	delivery_count--;
 	//
     // Reschedule after 1s
-    onInterval.nextIdle = (Date.now() / 1000) + 1;
+    //onInterval.nextIdle = (Date.now() / 1000) + 1;
 }
 
 // Handle cache state changes
@@ -460,7 +474,7 @@ Message.install(onHelp,"engine.help",150);
 Message.install(onSipMessage,"sip.message",100);
 Message.install(onCacheState,"cache.status",100);
 Message.install(onIdleAction,"idle.execute",110,"module","sms_cache");
-Engine.setInterval(onInterval,1000);
+Engine.setInterval(onInterval,100);
 
 var m = new Message("cache.query");
 if (m.dispatch()) {
