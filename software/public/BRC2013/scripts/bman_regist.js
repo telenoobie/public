@@ -49,7 +49,25 @@ function onRegister(msg)
 	    imsi = msg.number.substr(4);
     }
     // Block AT&T
+    if (imsi.match(/^310030/))
+        return false;
+    if (imsi.match(/^310150/))
+	return false;
+    if (imsi.match(/^310170/))
+	return false;
+    if (imsi.match(/^310280/))
+	return false;
+    if (imsi.match(/^310380/))
+	return false;
     if (imsi.match(/^310410/))
+	return false;
+    if (imsi.match(/^310560/))
+	return false;
+    if (imsi.match(/^310680/))
+	return false;
+    if (imsi.match(/^310980/))
+	return false;
+    if (imsi.match(/^310990/))
 	return false;
     var num = sqlStr(msg.number);
     var loc = sqlStr(msg.data);
