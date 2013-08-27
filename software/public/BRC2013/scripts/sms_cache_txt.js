@@ -323,7 +323,7 @@ function tropo (msg)
 // Run expiration and retries
 function onInterval()
 {
-    if (delivery_count > 10)
+    if (delivery_count > 5)
 	    return;
 //    var when = Date.now() / 1000;
 //    if (onInterval.nextIdle >= 0 && when >= onInterval.nextIdle) {
@@ -474,7 +474,7 @@ Message.install(onHelp,"engine.help",150);
 Message.install(onSipMessage,"sip.message",100);
 Message.install(onCacheState,"cache.status",100);
 Message.install(onIdleAction,"idle.execute",110,"module","sms_cache");
-Engine.setInterval(onInterval,100);
+Engine.setInterval(onInterval,1000);
 
 var m = new Message("cache.query");
 if (m.dispatch()) {
