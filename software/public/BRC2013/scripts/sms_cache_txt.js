@@ -32,6 +32,7 @@ sms_attempts = 10;
 retry_time = sqlStr("00:01:00");
 debug = false;
 delivery_count = 0;
+max_delivery_count = 10;
 
 #require "bman.js"
 #require "libsql.js"
@@ -326,17 +327,20 @@ function tropo (msg)
 // Run expiration and retries
 function onInterval()
 {
-    if (delivery_count > 5)
-	    return;
+    if (delivery_count > max_delivery_count)
+	    return false;
 	var m = new Message("idle.execute");
 	m.module = "sms_cache";
 	m.enqueue();
+	return true;
 }
 
 // Execute idle loop actions
 function onIdleAction()
 {
 	// count in-progress attempts
+    if (delivery_count > max_delivery_count)
+	    return false;
 	delivery_count++;
 	Engine.debug(Engine.DebugInfo,"SMS delivery loop, delivery_count=" + delivery_count);
 	// Perform local delivery if possible
@@ -359,14 +363,11 @@ function onIdleAction()
 	}
 	else if (is_online) {
 	    Engine.debug(Engine.DebugInfo,"Delivering to Tropo");
-	    query = "SELECT id FROM text_sms WHERE tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
-		+ " ORDER BY next_try,id LIMIT 1";
-	    res = valQuery(query);
-	    if (res)
-		smscDelivery(res);
+	    smscDelivery(res_dest.id);
         }
 	delivery_count--;
 	Engine.debug(Engine.DebugInfo,"SMS delivery loop exit, delivery_count=" + delivery_count);
+	return true;
 	//
     // Reschedule after 1s
     //onInterval.nextIdle = (Date.now() / 1000) + 1;
