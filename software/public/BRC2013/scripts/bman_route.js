@@ -52,13 +52,10 @@ function onRoute(msg)
 	if (called.length == 7 || called.match(/IMSI/))
 	{
 		return routeIMSI(msg);
-		return true;
-	}
 	}
 	if (called.length == 4 || called.length == 3 || called.length >= 8 )
 	{
-		routeTropo(msg);
-		return true;
+		return routeTropo(msg);
 	}
 	return false;
 }
@@ -75,6 +72,7 @@ function routeTropo(msg)
 
 function routeIMSI(msg)
 {
+	Engine.debug(Engine.DebugInfo,"route to OpenBTS" + msg.called + "/" + msg.caller);
 	var called = msg.called;
 	var caller = msg.caller;
 	// Get the IMSI and IP of the called phone.
