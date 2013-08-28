@@ -29,10 +29,10 @@ is_online =true;
 is_congested = false;
 max_queued = 30;
 sms_attempts = 10;
-retry_time = sqlStr("00:02:00");
+retry_time = sqlStr("00:01:00");
 debug = false;
 delivery_count = 0;
-max_delivery_count = 20;
+max_delivery_count = 40;
 
 #require "bman.js"
 #require "libsql.js"
@@ -129,7 +129,7 @@ function smscDelivery(id)
     m.method = "MESSAGE";
     m.uri = "sip:" + res.dest + "@" + vlr_sip;
     //m.uri = "sip:+" + res.dest + "@" + vlr_sip;
-    m.user = "IMSI" + res.imsi;
+    m.user = res.msisdn;
     if (my_sip)
 	m.domain = my_sip;
     m.xsip_type = "text/plain";
@@ -168,7 +168,6 @@ function moSipSms(msg,imsi)
     if (msisdn == "") {
 	Engine.debug(Engine.DebugAll,"Message from " + imsi + " with no return address");
 	msg.retValue(403); // forbidden
-	return true;
     }
     var dest = msg.called;
     Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (" + msisdn + ") -> '" + dest + "'");
@@ -182,11 +181,11 @@ function moSipSms(msg,imsi)
     var id = valQuery(query);
     if (!id) {
 	msg.retValue(500); // internal server error
-	return true;
     }
 
     msg.retValue(202); // accepted
-	return true;
+
+    return true;
 }
 
 
@@ -472,6 +471,34 @@ function onHelp(msg)
     msg.retValue(msg.retValue() + csmsHelp);
     return false;
 }
+
+
+
+/*
+function moveSms (id)
+{
+	var query_dest = "SELECT dest FROM text_sms WHERE id=" + sqlNum(id);
+	var res_dest = rowQuery(query_dest);
+        sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
+	Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_dest.dest);
+	// 7-digit numbers are local
+	if (res_dest.dest.length == 7) {
+		// Get the desination IP.
+		var query_loc = "SELECT location FROM register WHERE msisdn = " + sqlStr(res_dest.dest) + " LIMIT 1";
+		var res_loc = rowQuery(query_loc);
+		if (res_loc) {
+	   		Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_loc.location);
+	   		localDelivery(res_dest.id,res_loc.location);
+		}
+	}
+	// Everything else goes to Tropo
+	else if (is_online) {
+	    Engine.debug(Engine.DebugInfo,"Delivering to Tropo");
+	    smscDelivery(res_dest.id);
+        }
+}
+*/
+
 
 Engine.debugName("sms_cache");
 Message.trackName("sms_cache");
