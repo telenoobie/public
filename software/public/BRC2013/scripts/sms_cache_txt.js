@@ -126,7 +126,7 @@ function smscDelivery(id)
     var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE id=" + sqlNum(id));
     if (!res) {
 	Engine.debug(Engine.DebugInfo,"Message to " + location + " missing or database locked.");
-	return null;
+	return;
     }
     Engine.debug(Engine.DebugInfo,"Delivery proceeding to Tropo");
     sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
@@ -479,6 +479,7 @@ function moveSms (id,fast)
 		} else {
 			Engine.debug(Engine.Debug,"Destination " + res_dest.dest + " does not exist.");
     			sqlQuery("UPDATE text_sms SET tries=0,next_try=NOW() WHERE id=" + sqlNum(id));
+		}
 	}
 	// Everything else goes to Tropo
 	else if (is_online) {
