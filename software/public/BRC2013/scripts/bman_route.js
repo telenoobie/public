@@ -28,8 +28,8 @@
 
 function onRoute(msg)
 {
-	Engine.debug(Engine.DebugInfo,"call.route called ----" + msg.called + "----");
-	Engine.debug(Engine.DebugInfo,"call.route caller ----" + msg.caller + "----");
+	Engine.debug(Engine.DebugInfo,"onRoute " + msg.called + " -> " + msg.caller);
+//	Engine.debug(Engine.DebugInfo,"call.route caller ----" + msg.caller + "----");
 	var called = msg.called;
 	var caller = msg.caller;
 
@@ -47,6 +47,13 @@ function onRoute(msg)
 	msg.timeout = 1000*60*call_timer;
 	// TODO: It would be nice to have a warning tone before the cutoff.
 
+	// HACK: Allow the regex routing to handle test tone and echo tests.
+	// This should already be the case due to priority assigned but it's
+	// not happening for some reason.
+	if (called == "600" || called == "601")
+	{
+		return false;
+	}
 	// Target address is an MSISDN or an IMSI.
 	// MSISDNs are fixed at 7 digits.
 	if (called.length == 7 || called.match(/IMSI/))
@@ -62,9 +69,9 @@ function onRoute(msg)
 
 function routeTropo(msg)
 {
-	Engine.debug(Engine.DebugInfo,"route to tropo" + msg.called + "/" + msg.caller);
+	Engine.debug(Engine.DebugInfo,"routeTropo " + msg.called + " -> " + msg.caller);
 	var retValue = "sip/sip:" + msg.called + "@" + reg_sip;
-	Engine.debug(Engine.DebugInfo,"retValue" + retValue);
+	Engine.debug(Engine.DebugInfo,"routeTropo" + msg.called + " -> " + msg.caller + " retValue" + retValue);
 	msg.retValue(retValue);
 	return true;
 }
@@ -72,7 +79,7 @@ function routeTropo(msg)
 
 function routeIMSI(msg)
 {
-	Engine.debug(Engine.DebugInfo,"route to OpenBTS" + msg.called + "/" + msg.caller);
+	Engine.debug(Engine.DebugInfo,"routeIMSI " + msg.called + " -> " + msg.caller);
 	var called = msg.called;
 	var caller = msg.caller;
 	// Get the IMSI and IP of the called phone.
@@ -86,8 +93,9 @@ function routeIMSI(msg)
 	msg.uri = res.location.substr(4);
 	msg.retValue(res.location);
 
-	Engine.debug(Engine.DebugInfo,"call.route (after) called ----" + msg.called + "----");
-	Engine.debug(Engine.DebugInfo,"call.route c (after)aller ----" + msg.caller + "----");
+//	Engine.debug(Engine.DebugInfo,"call.route (after) called ----" + msg.called + "----");
+//	Engine.debug(Engine.DebugInfo,"call.route (after) caller ----" + msg.caller + "----");
+	Engine.debug(Engine.DebugInfo,"routeIMSI " + msg.caller + " -> " + msg.called + " (" + res.location + ")");
 
 	return true;
 }
