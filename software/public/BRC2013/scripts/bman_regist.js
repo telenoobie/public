@@ -41,7 +41,8 @@ function onRegister(msg)
 	// TODO: This needs to be updated to deal with the wired phones.
 	// HACK: Give the phone an IMSI for a user name.
 
-    Engine.debug(Engine.DebugInfo,"registration from " + msg.number);
+    var query = "registration from " + msg.number;
+    Engine.debug(Engine.DebugInfo,query);
     if (msg.number == "" || msg.data == "")
 	return false;
     if (msg.number !== undefined) {
@@ -49,6 +50,7 @@ function onRegister(msg)
 	    imsi = msg.number.substr(4);
     }
     // Block AT&T
+    // if (imsi.match(/^310(030|150|170|280|380|410|560|680|980|990)/))
     if (imsi.match(/^310030/))
         return false;
     if (imsi.match(/^310150/))
@@ -72,13 +74,15 @@ function onRegister(msg)
     var num = sqlStr(msg.number);
     var loc = sqlStr(msg.data);
     var imsisql = sqlStr(imsi);
-    query = "SELECT location FROM register WHERE imsi=" + imsisql;
+    query = "SELECT imsi FROM register WHERE imsi=" + imsisql;
     Engine.debug(Engine.DebugInfo,query);
     var qres = sqlQuery(query);
     // Failed database query. Phone will try again soon.
     if (qres === null) {
-	    msg.retValue(503);
-	    return true;
+            msg.retValue(503);
+            query = "Failed database query. Phone will try again soon. " + qres;
+            Engine.debug(Engine.DebugInfo,query);
+            return true;
     }
  
     // IMSI already in use?
@@ -93,7 +97,7 @@ function onRegister(msg)
 	    msg.retValue(503);
 	    return true;
 	}
-	message("Welcome to Legba! Your number is " + num + "; use with friends it on the playa. Tune 95.1 for gate info. NO EMERGENCY CALLS!", imsi,num);
+	message("Welcome to Legba! Your number is " + num + "; use with friends it on the playa. NO EMERGENCY CALLS!", imsi,num);
 	Engine.debug(Engine.DebugInfo,query);
 	msg.retValue(200);
 	return true;
@@ -101,10 +105,11 @@ function onRegister(msg)
 
     // Update location.
     query = "UPDATE register SET location=" + loc + " WHERE imsi=" + imsisql;
-    Engine.debug(Engine.DebugInfo,query);
     sqlQuery(query);
-    Engine.debug(Engine.DebugInfo,"found imsi " + imsisql + " in location " + res.location);
+    Engine.debug(Engine.DebugInfo,query);
+    query = "found imsi " + imsisql + " in location " + res.location;
     msg.retValue(200);
+    Engine.debug(Engine.DebugInfo,query);
     return true;
 }
 
@@ -188,7 +193,7 @@ function newnumber()
     val = goodnumber();
     while (!numberavailable(val)) {
 	val = goodnumber();
-	Engine.debug(Engine.DebugInfo,val);
+	//Engine.debug(Engine.DebugInfo,val);
     }
     return val;
 }
