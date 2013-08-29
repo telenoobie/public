@@ -86,13 +86,14 @@ function oneCompletion(msg,str,part)
 // Deliver SMS to registered MS
 function localDelivery(id,location)
 {
-    Engine.debug(Engine.DebugInfo,"Attempting delivery to " + location);
-    var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE tries > 0 AND id=" + sqlNum(id));
-    if (!res)
+    Engine.debug(Engine.DebugInfo,"Attempting local delivery of #" + id + " to " + location);
+    var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE id=" + sqlNum(id));
+    if (!res) {
+	Engine.debug(Engine.DebugInfo,"Message to " + location + " missing or database locked.");
 	return null;
-    //sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
-    // inifinite retry
-    sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + (retry_time * tries) + ") WHERE id=" + sqlNum(id));
+    }
+    Engine.debug(Engine.DebugInfo,"Delivery proceeding to " + location);
+    sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
 
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
@@ -121,9 +122,13 @@ function localDelivery(id,location)
 // Deliver SMS to upstream SMSC
 function smscDelivery(id)
 {
-    var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE tries > 0 AND id=" + sqlNum(id));
-    if (!res)
-	return;
+    Engine.debug(Engine.DebugInfo,"Attempting delivery of #" + id + " to Tropo");
+    var res = rowQuery("SELECT imsi,msisdn,dest,msg FROM text_sms WHERE id=" + sqlNum(id));
+    if (!res) {
+	Engine.debug(Engine.DebugInfo,"Message to " + location + " missing or database locked.");
+	return null;
+    }
+    Engine.debug(Engine.DebugInfo,"Delivery proceeding to Tropo");
     sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
 
     var m = new Message("xsip.generate");
@@ -342,29 +347,14 @@ function onIdleAction()
 	// Get a deliverable message id.
 	var query_dest = "SELECT dest,id FROM text_sms WHERE"
 	    + " tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
-	    + " ORDER BY next_try DESC LIMIT 1";
+	    + " ORDER BY next_try LIMIT 1";
 	var res_dest = rowQuery(query_dest);
     	if (!res_dest) {
 	    Engine.debug(Engine.DebugInfo,"No SMS ready for delivery.");
 	    return true;
 	}
-        sqlQuery("UPDATE text_sms SET next_try=SUBTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
-	Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_dest.dest);
-	// 7-digit numbers are local
-	if (res_dest.dest.length == 7) {
-		// Get the desination IP.
-		var query_loc = "SELECT location FROM register WHERE msisdn = " + sqlStr(res_dest.dest) + " LIMIT 1";
-		var res_loc = rowQuery(query_loc);
-		if (res_loc) {
-	   		Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_loc.location);
-	   		localDelivery(res_dest.id,res_loc.location);
-		}
-	}
-	// Everything else goes to Tropo
-	else if (is_online) {
-	    Engine.debug(Engine.DebugInfo,"Delivering to Tropo");
-	    smscDelivery(res_dest.id);
-        }
+	moveSms(res_dest.id,false);
+
 	delivery_count--;
 	Engine.debug(Engine.DebugInfo,"SMS delivery loop exit, delivery_count=" + delivery_count);
 	return true;
@@ -478,23 +468,21 @@ function moveSms (id,fast)
 {
 	var query_dest = "SELECT dest FROM text_sms WHERE id=" + sqlNum(id);
 	var res_dest = rowQuery(query_dest);
-	if (!fast)
-	        sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
-	Engine.debug(Engine.DebugInfo,"Attempting fast delivery to " + res_dest.dest);
+	Engine.debug(Engine.DebugInfo,"Attempting delivery of #" + id + " to " + res_dest.dest);
 	// 7-digit numbers are local
 	if (res_dest.dest.length == 7) {
 		// Get the desination IP.
 		var query_loc = "SELECT location FROM register WHERE msisdn = " + sqlStr(res_dest.dest) + " LIMIT 1";
 		var res_loc = rowQuery(query_loc);
 		if (res_loc) {
-	   		Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_loc.location);
-	   		localDelivery(res_dest.id,res_loc.location);
-		}
+	   		localDelivery(id,res_loc.location);
+		} else {
+			Engine.debug(Engine.Debug,"Destination " + res_dest.dest + " does not exist.");
+    			sqlQuery("UPDATE text_sms SET tries=0,next_try=NOW() WHERE id=" + sqlNum(id));
 	}
 	// Everything else goes to Tropo
 	else if (is_online) {
-	    Engine.debug(Engine.DebugInfo,"Delivering to Tropo");
-	    smscDelivery(res_dest.id);
+	    smscDelivery(id);
         }
 }
 
@@ -506,7 +494,7 @@ Message.install(onHelp,"engine.help",150);
 Message.install(onSipMessage,"sip.message",100);
 Message.install(onCacheState,"cache.status",100);
 Message.install(onIdleAction,"idle.execute",110,"module","sms_cache");
-Engine.setInterval(onInterval,100);
+Engine.setInterval(onInterval,1000);
 
 var m = new Message("cache.query");
 if (m.dispatch()) {
