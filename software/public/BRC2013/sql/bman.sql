@@ -3,7 +3,8 @@
 CREATE TABLE `register` (
   `imsi` varchar(20) NOT NULL,
   `msisdn` varchar(24) DEFAULT NULL,
-  `location` varchar(120) DEFAULT NULL
+  `location` varchar(120) DEFAULT NULL,
+  `updated` datetime DEFAULT NULL
 )
 
 CREATE TABLE `text_sms` (
