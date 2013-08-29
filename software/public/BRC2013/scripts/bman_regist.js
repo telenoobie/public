@@ -25,7 +25,7 @@
 #require "bman.js"
 #require "libsql.js"
 
-sms_attempts= 3;
+$ms_attempts= 20;
 
 
 /* on every register request
@@ -105,8 +105,11 @@ function onRegister(msg)
 
     // Update location.
     query = "UPDATE register SET location=" + loc + " WHERE imsi=" + imsisql;
-    sqlQuery(query);
     Engine.debug(Engine.DebugInfo,query);
+    worked = sqlQuery(query);
+    if (!worked) {
+	msg.retValue(503);
+    }
     msg.retValue(200);
     return true;
 }
