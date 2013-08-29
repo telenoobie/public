@@ -28,11 +28,11 @@ is_online =true;
 
 is_congested = false;
 max_queued = 30;
-sms_attempts = 10;
+sms_attempts = 20;
 retry_time = sqlStr("00:01:00");
 debug = false;
 delivery_count = 0;
-max_delivery_count = 40;
+max_delivery_count = 15;
 
 #require "bman.js"
 #require "libsql.js"
@@ -92,7 +92,7 @@ function localDelivery(id,location)
 	return null;
     //sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
     // inifinite retry
-    sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
+    sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + (retry_time * tries) + ") WHERE id=" + sqlNum(id));
 
     var m = new Message("xsip.generate");
     m.method = "MESSAGE";
@@ -111,7 +111,8 @@ function localDelivery(id,location)
     		Engine.debug(Engine.DebugInfo,"Removing message delivered to " + location);
 		sqlQuery("UPDATE text_sms SET next_try=NOW(),tries=-1 WHERE id=" + id);
 	    default:
-    		Engine.debug(Engine.DebugInfo,"Delivery to " + location + " failed; will try again later.");
+    		var query = "Delivery to " + location + " failed; will try again later.";
+    		Engine.debug(Engine.DebugInfo,query);
 		return;
 	}
     }
@@ -185,6 +186,9 @@ function moSipSms(msg,imsi)
 
     msg.retValue(202); // accepted
 
+    // try fast delivery
+    moveSms(id,true);
+
     return true;
 }
 
@@ -225,6 +229,8 @@ function mtSipSms(msg,imsi)
 // Handle SIP SMS
 function onSipMessage(msg)
 {
+	Engine.debug(Engine.DebugInfo,"SMS " + msg.caller + " -> " + msg.called);
+
     if (msg.caller == "" || msg.called == "")
 	return false;
     if (msg.xsip_type != "text/plain" || msg.xsip_body == "") {
@@ -282,7 +288,11 @@ function local (msg)
     }
 
     msg.retValue(202); // accepted
-	return true;
+
+    // try immediate delivery
+    moveSms(id,true);
+
+    return true;
 
 }
 
@@ -294,7 +304,7 @@ function tropo (msg)
 	var tmp = msg.caller.substr(4);
 	// Set the caller ID
 	if (msg.caller.match(/IMSI/)) {
-		query = "SELECT msisdn FROM register WHERE imsi=" + sqlStr(msg.caller.substr(4));
+		var query = "SELECT msisdn FROM register WHERE imsi=" + sqlStr(msg.caller.substr(4));
 		res = rowQuery(query);
 		if (res) { 
 			msg.caller = res.msisdn;
@@ -308,23 +318,12 @@ function tropo (msg)
 // Run expiration and retries
 function onInterval()
 {
-	var m = new Message("engine.status");
-	m.wait = true;
-	m.name="engine";
-	if (m.dispatch(true)) {
-		// then what?
-		Engine.debug(Engine.DebugWarn,"We have " + m.workers + " worker threads");
-		if (m.workers>10) {
-			Engine.debug(Engine.DebugWarn,"Too many worker threads");
-			return false;
-		}
-	}
-
     if (delivery_count > max_delivery_count)
 	    return false;
 	var m = new Message("idle.execute");
 	m.module = "sms_cache";
 	m.enqueue();
+	nInterval.nextIdle = Date.now()/1000 + 1;
 	return true;
 }
 
@@ -337,18 +336,19 @@ function onIdleAction()
 	    return false;
 
 	delivery_count++;
-	Engine.debug(Engine.DebugInfo,"SMS delivery loop, delivery_count=" + delivery_count);
+	var query = "SMS delivery loop, delivery_count=" + delivery_count;
+	Engine.debug(Engine.DebugInfo,query);
 	// Perform local delivery if possible
 	// Get a deliverable message id.
 	var query_dest = "SELECT dest,id FROM text_sms WHERE"
 	    + " tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
-	    + " ORDER BY next_try LIMIT 1";
+	    + " ORDER BY next_try DESC LIMIT 1";
 	var res_dest = rowQuery(query_dest);
     	if (!res_dest) {
 	    Engine.debug(Engine.DebugInfo,"No SMS ready for delivery.");
 	    return true;
 	}
-        sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
+        sqlQuery("UPDATE text_sms SET next_try=SUBTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
 	Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_dest.dest);
 	// 7-digit numbers are local
 	if (res_dest.dest.length == 7) {
@@ -474,13 +474,13 @@ function onHelp(msg)
 
 
 
-/*
-function moveSms (id)
+function moveSms (id,fast)
 {
 	var query_dest = "SELECT dest FROM text_sms WHERE id=" + sqlNum(id);
 	var res_dest = rowQuery(query_dest);
-        sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(res_dest.id));
-	Engine.debug(Engine.DebugInfo,"Deliverable message to " + res_dest.dest);
+	if (!fast)
+	        sqlQuery("UPDATE text_sms SET next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
+	Engine.debug(Engine.DebugInfo,"Attempting fast delivery to " + res_dest.dest);
 	// 7-digit numbers are local
 	if (res_dest.dest.length == 7) {
 		// Get the desination IP.
@@ -497,7 +497,6 @@ function moveSms (id)
 	    smscDelivery(res_dest.id);
         }
 }
-*/
 
 
 Engine.debugName("sms_cache");
@@ -507,7 +506,7 @@ Message.install(onHelp,"engine.help",150);
 Message.install(onSipMessage,"sip.message",100);
 Message.install(onCacheState,"cache.status",100);
 Message.install(onIdleAction,"idle.execute",110,"module","sms_cache");
-Engine.setInterval(onInterval,1000);
+Engine.setInterval(onInterval,100);
 
 var m = new Message("cache.query");
 if (m.dispatch()) {
