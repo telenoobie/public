@@ -107,9 +107,7 @@ function onRegister(msg)
     query = "UPDATE register SET location=" + loc + " WHERE imsi=" + imsisql;
     sqlQuery(query);
     Engine.debug(Engine.DebugInfo,query);
-    query = "found imsi " + imsisql + " in location " + res.location;
     msg.retValue(200);
-    Engine.debug(Engine.DebugInfo,query);
     return true;
 }
 
