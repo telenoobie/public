@@ -277,6 +277,11 @@ function onSipMessage(msg)
 		return true;
 	}
 
+	// HACK APP - text echo + signal information app
+	if (msg.called == "511") {
+		return local(msg);
+	}
+
 	if (msg.called.length != 7)
 		return tropo(msg);
 
@@ -298,6 +303,46 @@ function onSipMessage(msg)
 // Enqueue a message for local delivery.
 function local (msg)
 {
+	var query;
+
+	// HACK APP - text echo + signal information app
+	if (msg.called == "511") {
+		var imsi = msg.caller.substr(4);
+		Engine.debug(Engine.DebugInfo,"511: Sending to text echo + signal information app from IMSI " + imsi);
+
+		query = "SELECT msisdn FROM register WHERE imsi=" + sqlStr(imsi);
+		Engine.debug(Engine.DebugInfo,"511: query = " + query);
+		var msisdn = valQuery(query);
+		if (!msisdn) {
+			Engine.debug(Engine.DebugInfo,"511: no msisdn found");
+			msg.retValue(404);
+			return true;
+		}
+		Engine.debug(Engine.DebugInfo,"511: msisdn found: " + msisdn);
+
+		query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
+		query += " VALUES(" + sqlStr(imsi) + "," + sqlStr("511") + ","
+			+ sqlStr(msisdn) + ",ADDTIME(NOW(),'00:00:10'),5,"
+			+ sqlStr(msg.xsip_body + " - and some magic radio stuff") + ")";
+		query += "; SELECT LAST_INSERT_ID()";
+		Engine.debug(Engine.DebugInfo,"511: query2 = " + query);
+		var id = sqlQuery(query);
+		if (!id) {
+			Engine.debug(Engine.DebugInfo,"511: no id found");
+			msg.retValue(500); // internal server error
+			return true;
+		}
+		Engine.debug(Engine.DebugInfo,"511: id found");
+
+		msg.retValue(202); // accepted
+
+		// try immediate delivery
+		//moveSms(id,true);
+		//Engine.debug(Engine.DebugInfo,"511: past moveSms()");
+
+		return true;
+	}
+
 	Engine.debug(Engine.DebugInfo,"Sending to local from IMSI " + msg.caller + " to " + sqlStr(msg.called));
 	query = "SELECT imsi FROM register WHERE msisdn=" + sqlStr(msg.called);
 	imsi = valQuery(query);
@@ -309,7 +354,7 @@ function local (msg)
 	//
 	// Put the SMS into the delivery database.
 	simsi = sqlStr(imsi);
-	var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
+	query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
 	query += " VALUES(" + sqlStr(imsi) + "," + sqlStr(msg.caller) + ","
 		+ sqlStr(msg.called) + ",NOW()," + sqlNum(sms_attempts) + ","
 		+ sqlStr(msg.xsip_body) + ")";
@@ -375,7 +420,7 @@ function onIdleAction()
 	// Get a deliverable message id.
 	var query_dest = "SELECT dest,id FROM text_sms WHERE"
 		+ " tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
-		+ " ORDER BY next_try LIMIT 1";
+		+ " ORDER BY next_try DESC LIMIT 1";
 	var res_dest = rowQuery(query_dest);
 	if (!res_dest) {
 		Engine.debug(Engine.DebugInfo,"No SMS ready for delivery.");
