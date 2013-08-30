@@ -320,10 +320,13 @@ function local (msg)
 		}
 		Engine.debug(Engine.DebugInfo,"511: msisdn found: " + msisdn);
 
+		for (var key in msg) {
+			Engine.debug(Engine.DebugInfo,"511: msg." + key + " = " + msg[key]);
+		}
 		query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
 		query += " VALUES(" + sqlStr(imsi) + "," + sqlStr("511") + ","
 			+ sqlStr(msisdn) + ",ADDTIME(NOW(),'00:00:10'),5,"
-			+ sqlStr(msg.xsip_body + " - and some magic radio stuff") + ")";
+			+ sqlStr(msg.xsip_body + " ::: ") + ")";
 		query += "; SELECT LAST_INSERT_ID()";
 		Engine.debug(Engine.DebugInfo,"511: query2 = " + query);
 		var id = sqlQuery(query);
