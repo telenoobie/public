@@ -28,8 +28,8 @@ is_online =true;
 
 is_congested = false;
 max_queued = 30;
-sms_attempts = 20;
-retry_time = sqlStr("00:01:00");
+sms_attempts = 60;
+retry_time = sqlStr("00:02:00");
 debug = false;
 delivery_count = 0;
 max_delivery_count = 15;
@@ -93,7 +93,7 @@ function localDelivery(id,location)
 		return null;
 	}
 	Engine.debug(Engine.DebugInfo,"Delivery proceeding to " + location);
-	sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
+	sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id)) + " AND tries>0";
 
 	var m = new Message("xsip.generate");
 	m.method = "MESSAGE";
@@ -129,7 +129,7 @@ function smscDelivery(id)
 		return;
 	}
 	Engine.debug(Engine.DebugInfo,"Delivery proceeding to Tropo");
-	sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id));
+	sqlQuery("UPDATE text_sms SET tries=tries-1,next_try=ADDTIME(NOW()," + retry_time + ") WHERE id=" + sqlNum(id)) + " AND tries>0";
 
 	var m = new Message("xsip.generate");
 	m.method = "MESSAGE";
@@ -139,7 +139,16 @@ function smscDelivery(id)
 	if (my_sip)
 		m.domain = my_sip;
 	m.xsip_type = "text/plain";
-	m.xsip_body = res.msg;
+	// HACK : replace spaces in messages so Tropo doesn't choke
+	//m.xsip_body = res.msg;
+	var smsbody = res.msg;
+	if (res.msisdn.length > 7) {
+		if (smsbody.indexOf(" ") != -1) {
+			smsbody = smsbody.split(" ");
+			smsbody = smsbody.join("_");
+		}
+	}
+	m.xsip_body = smsbody;
 	m.wait = true;
 	if (m.dispatch(true)) {
 		switch (m.code) {
@@ -206,10 +215,18 @@ function moSipSms(msg,imsi)
 	var dest = msg.called;
 	Engine.debug(Engine.DebugAll,"MO SMS '" + imsi + "' (" + msisdn + ") -> '" + dest + "'");
 	// Put the SMS into the delivery database.
+	// HACK : avoid dropping single quotes into the db, should be handled with base64 in the end
+	var smsbody = msg.xsip_body;
+	// HACK OF A HACK : why does YATE's engine not like this, oh well, split().join() is functionally equiv
+	//smsbody = smsbody.replace(/\'/g,"");
+	if (smsbody.indexOf("'") != -1) {
+		smsbody = smsbody.split("'");
+		smsbody = smsbody.join("");
+	}
 	var query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
 	query += " VALUES(" + simsi + "," + sqlStr(msisdn) + ","
 		+ sqlStr(dest) + ",NOW()," + sqlNum(sms_attempts) + ","
-		+ sqlStr(msg.xsip_body) + ")";
+		+ sqlStr(smsbody) + ")";
 	query += "; SELECT LAST_INSERT_ID()";
 	Engine.debug(Engine.DebugInfo,query);
 	var id = valQuery(query);
@@ -220,7 +237,7 @@ function moSipSms(msg,imsi)
 	msg.retValue(202); // accepted
 
 	// try fast delivery
-	moveSms(id,true);
+	//moveSms(id,true);
 
 	return true;
 }
@@ -272,10 +289,10 @@ function onSipMessage(msg)
 	}
 
 		// For now, reject these until Tropo is connected.
-	if (msg.called.length >= 8) {
-			msg.retValue(488); // not acceptable here
-		return true;
-	}
+	//if (msg.called.length >= 8) {
+	//		msg.retValue(488); // not acceptable here
+	//	return true;
+	//}
 
 	// HACK APP - text echo + signal information app
 	if (msg.called == "511") {
@@ -357,10 +374,15 @@ function local (msg)
 	//
 	// Put the SMS into the delivery database.
 	simsi = sqlStr(imsi);
+	var smsbody = msg.xsip_body;
+	if (smsbody.indexOf("'") != -1) {
+		smsbody = smsbody.split("'");
+		smsbody = smsbody.join("");
+	}
 	query = "INSERT INTO text_sms(imsi,msisdn,dest,next_try,tries,msg)";
 	query += " VALUES(" + sqlStr(imsi) + "," + sqlStr(msg.caller) + ","
 		+ sqlStr(msg.called) + ",NOW()," + sqlNum(sms_attempts) + ","
-		+ sqlStr(msg.xsip_body) + ")";
+		+ sqlStr(smsbody) + ")";
 	query += "; SELECT LAST_INSERT_ID()";
 	var id = valQuery(query);
 	if (!id) {
@@ -371,7 +393,7 @@ function local (msg)
 	msg.retValue(202); // accepted
 
 	// try immediate delivery
-	moveSms(id,true);
+	//moveSms(id,true);
 
 	return true;
 
@@ -425,6 +447,15 @@ function onIdleAction()
 		+ " tries > 0 AND next_try IS NOT NULL AND NOW() > next_try"
 		+ " ORDER BY next_try DESC LIMIT 1";
 	var res_dest = rowQuery(query_dest);
+	if (!res_dest) {
+		// Nothing new pending?
+		// Retry one we gave up on.
+		Engine.debug(Engine.DebugInfo,"No fresh SMS ready for delivery; reviving an old one.");
+		query_dest = "SELECT dest,id FROM text_sms WHERE"
+			+ " tries = 0 AND next_try IS NOT NULL AND NOW() > next_try"
+			+ " ORDER BY next_try DESC LIMIT 1";
+		res_dest = rowQuery(query_dest);
+	}
 	if (!res_dest) {
 		Engine.debug(Engine.DebugInfo,"No SMS ready for delivery.");
 		return true;
@@ -542,7 +573,7 @@ function onHelp(msg)
 
 function moveSms (id,fast)
 {
-	var query_dest = "SELECT dest FROM text_sms WHERE id=" + sqlNum(id);
+	var query_dest = "SELECT dest FROM text_sms WHERE tries >= 0 AND id=" + sqlNum(id);
 	var res_dest = rowQuery(query_dest);
 	Engine.debug(Engine.DebugInfo,"Attempting delivery of #" + id + " to " + res_dest.dest);
 	// 7-digit numbers are local
