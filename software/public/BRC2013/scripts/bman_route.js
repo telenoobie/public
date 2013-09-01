@@ -28,7 +28,7 @@
 
 function onRoute(msg)
 {
-	Engine.debug(Engine.DebugInfo,"onRoute " + msg.called + " -> " + msg.caller);
+	Engine.debug(Engine.DebugInfo,"onRoute " + msg.caller + " -> " + msg.called);
 //	Engine.debug(Engine.DebugInfo,"call.route caller ----" + msg.caller + "----");
 	var called = msg.called;
 	var caller = msg.caller;
@@ -62,7 +62,7 @@ function onRoute(msg)
 	{
 		return routeIMSI(msg);
 	}
-	if (called.length == 4 || called.length == 3 || called.length >= 8 )
+	if (called.length == 4 || called.length == 3 || called.length == 5 || called.length >= 8 )
 	{
 		return routeTropo(msg);
 	}
@@ -71,9 +71,9 @@ function onRoute(msg)
 
 function routeTropo(msg)
 {
-	Engine.debug(Engine.DebugInfo,"routeTropo " + msg.called + " -> " + msg.caller);
+	Engine.debug(Engine.DebugInfo,"routeTropo " + msg.caller + " -> " + msg.called);
 	var retValue = "sip/sip:" + msg.called + "@" + reg_sip;
-	Engine.debug(Engine.DebugInfo,"routeTropo" + msg.called + " -> " + msg.caller + " retValue" + retValue);
+	Engine.debug(Engine.DebugInfo,"routeTropo" + msg.caller + " -> " + msg.called + "(" + retValue + ")");
 	msg.retValue(retValue);
 	return true;
 }
@@ -81,7 +81,7 @@ function routeTropo(msg)
 
 function routeIMSI(msg)
 {
-	Engine.debug(Engine.DebugInfo,"routeIMSI " + msg.called + " -> " + msg.caller);
+	Engine.debug(Engine.DebugInfo,"routeIMSI " + msg.caller + " -> " + msg.called);
 	var called = msg.called;
 	var caller = msg.caller;
 	// Get the IMSI and IP of the called phone.
@@ -97,7 +97,7 @@ function routeIMSI(msg)
 
 //	Engine.debug(Engine.DebugInfo,"call.route (after) called ----" + msg.called + "----");
 //	Engine.debug(Engine.DebugInfo,"call.route (after) caller ----" + msg.caller + "----");
-	Engine.debug(Engine.DebugInfo,"routeIMSI " + msg.caller + " -> " + msg.called + " (" + res.location + ")");
+	Engine.debug(Engine.DebugInfo,"routeTropo" + msg.caller + " -> " + msg.called + "(" + res.location + ")");
 
 	return true;
 }
